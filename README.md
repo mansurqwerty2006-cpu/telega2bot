@@ -46,13 +46,16 @@ python bot.py --check
 
 ## Render
 
-Проект можно задеплоить как Render Background Worker. В Render нужны переменные:
+Проект можно задеплоить как Render Web Service. В Render нужны переменные:
 
 - `TELEGRAM_BOT_TOKEN`
 - `GEMINI_API_KEY`
 - `TAVILY_API_KEY`
 - `GEMINI_MODEL`
 - `MAX_OUTPUT_TOKENS`
+
+Бот слушает `PORT` только для Render health check и параллельно запускает Telegram polling.
+Для постоянной работы лучше использовать Render Background Worker, но он может требовать карту.
 
 ## Важно
 

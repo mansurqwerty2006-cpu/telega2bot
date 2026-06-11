@@ -1,10 +1,11 @@
 services:
-  - type: worker
+  - type: web
     name: telega2bot
     runtime: python
-    plan: starter
+    plan: free
     buildCommand: pip install -r requirements.txt
     startCommand: python bot.py
+    healthCheckPath: /health
     autoDeploy: true
     envVars:
       - key: TELEGRAM_BOT_TOKEN

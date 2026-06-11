@@ -7,7 +7,9 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from threading import Thread
 from typing import Any
 
 
@@ -32,6 +34,35 @@ logger = logging.getLogger("telegram-ai-bot")
 
 class ApiError(RuntimeError):
     pass
+
+
+class HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self) -> None:
+        if self.path in {"/", "/health"}:
+            body = b"ok\n"
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        self.send_response(404)
+        self.end_headers()
+
+    def log_message(self, format: str, *args: Any) -> None:
+        logger.debug("health server: " + format, *args)
+
+
+def start_health_server_from_env() -> None:
+    port = os.getenv("PORT")
+    if not port:
+        return
+
+    server = ThreadingHTTPServer(("0.0.0.0", int(port)), HealthHandler)
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    logger.info("Health server listening on port %s", port)
 
 
 def load_env(path: str = ".env") -> None:
@@ -359,6 +390,7 @@ def main() -> None:
         print(f"Tavily search: {'enabled' if state.tavily else 'disabled'}")
         return
 
+    start_health_server_from_env()
     TelegramBot(telegram_token, state).run()
 
 

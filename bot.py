@@ -17,6 +17,7 @@ TELEGRAM_LIMIT = 4096
 SAFE_MESSAGE_LIMIT = 3900
 GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta"
 TAVILY_SEARCH_URL = "https://api.tavily.com/search"
+OPENWEATHER_URL = "https://api.openweathermap.org/data/2.5/weather"
 
 DEFAULT_SYSTEM_INSTRUCTION = (
     "Ты дружелюбный AI-помощник в Telegram. Отвечай на языке пользователя, "
@@ -198,9 +199,26 @@ class TavilyClient:
 
 
 @dataclass
+class OpenWeatherClient:
+    api_key: str
+
+    def current_weather(self, location: str) -> dict[str, Any]:
+        query = urllib.parse.urlencode(
+            {
+                "q": location,
+                "appid": self.api_key,
+                "units": "metric",
+                "lang": "ru",
+            }
+        )
+        return http_json(f"{OPENWEATHER_URL}?{query}", timeout=30)
+
+
+@dataclass
 class BotState:
     gemini: GeminiClient
     tavily: TavilyClient | None = None
+    weather: OpenWeatherClient | None = None
     histories: dict[int, list[dict[str, Any]]] = field(default_factory=dict)
 
     def reset(self, chat_id: int) -> None:
@@ -244,6 +262,42 @@ class BotState:
             + "\n\n".join(source_lines)
         )
         return self.gemini.generate([{"role": "user", "parts": [{"text": prompt}]}])
+
+    def current_weather(self, location: str) -> str:
+        if not self.weather:
+            return "OpenWeather не настроен. Добавь OPENWEATHER_API_KEY в .env или Render."
+
+        data = self.weather.current_weather(location)
+        city = data.get("name") or location
+        country = (data.get("sys") or {}).get("country")
+        weather = (data.get("weather") or [{}])[0]
+        main = data.get("main") or {}
+        wind = data.get("wind") or {}
+
+        description = weather.get("description") or "нет описания"
+        temp = main.get("temp")
+        feels_like = main.get("feels_like")
+        humidity = main.get("humidity")
+        pressure = main.get("pressure")
+        wind_speed = wind.get("speed")
+
+        place = f"{city}, {country}" if country else city
+        lines = [
+            f"Погода: {place}",
+            f"Сейчас: {description}",
+        ]
+        if temp is not None:
+            lines.append(f"Температура: {round(float(temp))} °C")
+        if feels_like is not None:
+            lines.append(f"Ощущается как: {round(float(feels_like))} °C")
+        if humidity is not None:
+            lines.append(f"Влажность: {humidity}%")
+        if pressure is not None:
+            lines.append(f"Давление: {pressure} гПа")
+        if wind_speed is not None:
+            lines.append(f"Ветер: {wind_speed} м/с")
+
+        return "\n".join(lines)
 
 
 class TelegramBot:
@@ -316,6 +370,7 @@ class TelegramBot:
                 "Команды:\n"
                 "/reset - очистить контекст диалога\n"
                 "/search запрос - поиск через Tavily\n"
+                "/weather город - погода через OpenWeather\n"
                 "/model - показать активную модель\n"
                 "/help - помощь",
             )
@@ -327,6 +382,8 @@ class TelegramBot:
                 "Просто отправь текст, и я отвечу через AI.\n"
                 "Для свежей информации используй /search, например:\n"
                 "/search последние новости AI\n"
+                "Для погоды используй /weather, например:\n"
+                "/weather Алматы\n"
                 "Если разговор пошел не туда, используй /reset.",
             )
             return
@@ -354,6 +411,23 @@ class TelegramBot:
                 self.send_message(chat_id, "Не получилось выполнить поиск. Проверь TAVILY_API_KEY и попробуй позже.")
             return
 
+        if text.startswith("/weather"):
+            location = text.removeprefix("/weather").strip()
+            if not location:
+                self.send_message(chat_id, "Напиши город после команды, например: /weather Алматы")
+                return
+
+            self.send_typing(chat_id)
+            try:
+                self.send_message(chat_id, self.state.current_weather(location))
+            except Exception:
+                logger.exception("Weather request failed")
+                self.send_message(
+                    chat_id,
+                    "Не получилось получить погоду. Проверь OPENWEATHER_API_KEY и название города.",
+                )
+            return
+
         self.send_typing(chat_id)
         try:
             self.send_message(chat_id, self.state.ask(chat_id, text))
@@ -373,11 +447,13 @@ def build_state() -> BotState:
     )
     tavily_key = os.getenv("TAVILY_API_KEY")
     tavily = TavilyClient(tavily_key) if tavily_key else None
-    return BotState(gemini=gemini, tavily=tavily)
+    openweather_key = os.getenv("OPENWEATHER_API_KEY")
+    weather = OpenWeatherClient(openweather_key) if openweather_key else None
+    return BotState(gemini=gemini, tavily=tavily, weather=weather)
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Telegram AI bot with Gemini and Tavily search")
+    parser = argparse.ArgumentParser(description="Telegram AI bot with Gemini, Tavily search, and OpenWeather")
     parser.add_argument("--check", action="store_true", help="validate local configuration and exit")
     args = parser.parse_args()
 
@@ -388,6 +464,7 @@ def main() -> None:
         print("Configuration OK")
         print(f"Gemini model: {state.gemini.model}")
         print(f"Tavily search: {'enabled' if state.tavily else 'disabled'}")
+        print(f"OpenWeather: {'enabled' if state.weather else 'disabled'}")
         return
 
     start_health_server_from_env()

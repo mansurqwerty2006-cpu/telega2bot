@@ -1,6 +1,6 @@
 # Telegram AI Bot
 
-Простой Telegram-бот с ответами через Gemini и поиском через Tavily.
+Простой Telegram-бот с ответами через Gemini, поиском через Tavily и погодой через OpenWeather.
 
 ## Запуск
 
@@ -22,6 +22,7 @@
 TELEGRAM_BOT_TOKEN=...
 GEMINI_API_KEY=...
 TAVILY_API_KEY=...
+OPENWEATHER_API_KEY=...
 GEMINI_MODEL=gemini-3.5-flash
 MAX_OUTPUT_TOKENS=2048
 ```
@@ -34,6 +35,7 @@ MAX_OUTPUT_TOKENS=2048
 - `/help` - помощь
 - `/reset` - очистить контекст диалога
 - `/search запрос` - поиск в интернете через Tavily
+- `/weather город` - текущая погода через OpenWeather
 - `/model` - показать активную модель
 
 ## Проверка
@@ -51,6 +53,7 @@ python bot.py --check
 - `TELEGRAM_BOT_TOKEN`
 - `GEMINI_API_KEY`
 - `TAVILY_API_KEY`
+- `OPENWEATHER_API_KEY`
 - `GEMINI_MODEL`
 - `MAX_OUTPUT_TOKENS`
 

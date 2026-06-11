@@ -14,6 +14,8 @@ services:
         sync: false
       - key: TAVILY_API_KEY
         sync: false
+      - key: OPENWEATHER_API_KEY
+        sync: false
       - key: GEMINI_MODEL
         value: gemini-3.5-flash
       - key: MAX_OUTPUT_TOKENS

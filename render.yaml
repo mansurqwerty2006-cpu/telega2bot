@@ -3,7 +3,7 @@ services:
     name: telega2bot
     runtime: python
     plan: starter
-    buildCommand: ""
+    buildCommand: pip install -r requirements.txt
     startCommand: python bot.py
     autoDeploy: true
     envVars:

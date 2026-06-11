@@ -141,6 +141,44 @@ def split_for_telegram(text: str, limit: int = SAFE_MESSAGE_LIMIT) -> list[str]:
     return chunks
 
 
+def normalize_weather_location(text: str) -> str:
+    location = " ".join(text.strip().replace(",", " ").split())
+    location_lower = location.lower()
+
+    prefixes = [
+        "погода в городе ",
+        "погода во ",
+        "погода в ",
+        "погода ",
+        "weather in ",
+        "weather ",
+        "город ",
+        "в городе ",
+        "во ",
+        "в ",
+    ]
+    for prefix in prefixes:
+        if location_lower.startswith(prefix):
+            location = location[len(prefix):].strip()
+            location_lower = location.lower()
+            break
+
+    aliases = {
+        "астане": "Астана",
+        "астана": "Астана",
+        "нур султан": "Астана",
+        "нур-султан": "Астана",
+        "алмате": "Алматы",
+        "алматы": "Алматы",
+        "москве": "Москва",
+        "москва": "Москва",
+        "питере": "Санкт-Петербург",
+        "санкт петербурге": "Санкт-Петербург",
+        "санкт-петербурге": "Санкт-Петербург",
+    }
+    return aliases.get(location_lower, location)
+
+
 @dataclass
 class GeminiClient:
     api_key: str
@@ -267,6 +305,7 @@ class BotState:
         if not self.weather:
             return "OpenWeather не настроен. Добавь OPENWEATHER_API_KEY в .env или Render."
 
+        location = normalize_weather_location(location)
         data = self.weather.current_weather(location)
         city = data.get("name") or location
         country = (data.get("sys") or {}).get("country")

@@ -44,6 +44,16 @@ MAX_OUTPUT_TOKENS=2048
 python bot.py --check
 ```
 
+## Render
+
+Проект можно задеплоить как Render Background Worker. В Render нужны переменные:
+
+- `TELEGRAM_BOT_TOKEN`
+- `GEMINI_API_KEY`
+- `TAVILY_API_KEY`
+- `GEMINI_MODEL`
+- `MAX_OUTPUT_TOKENS`
+
 ## Важно
 
 Бот работает, пока запущен `python bot.py` или `.\run.ps1`. Для постоянной работы его нужно держать на сервере/VPS или хостинге, который поддерживает Python-процессы.

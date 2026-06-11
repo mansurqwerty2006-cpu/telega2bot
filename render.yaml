@@ -1,0 +1,19 @@
+services:
+  - type: worker
+    name: telega2bot
+    runtime: python
+    plan: starter
+    buildCommand: ""
+    startCommand: python bot.py
+    autoDeploy: true
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: TAVILY_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-3.5-flash
+      - key: MAX_OUTPUT_TOKENS
+        value: "2048"

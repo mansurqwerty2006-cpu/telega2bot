@@ -27,7 +27,6 @@ DEFAULT_SYSTEM_INSTRUCTION = (
 
 BOT_COMMANDS = [
     {"command": "start", "description": "Запустить бота"},
-    {"command": "menu", "description": "Открыть удобное меню"},
     {"command": "search", "description": "Найти информацию в интернете"},
     {"command": "weather", "description": "Узнать текущую погоду"},
     {"command": "model", "description": "Показать активную AI-модель"},
@@ -35,18 +34,12 @@ BOT_COMMANDS = [
     {"command": "help", "description": "Помощь по командам"},
 ]
 
-MENU_TEXT = (
-    "Меню бота\n\n"
-    "Выбери команду кнопкой ниже или напиши свой вопрос обычным сообщением.\n"
-    "Для поиска и погоды можно заменить пример на свой запрос."
-)
-
 MENU_KEYBOARD = {
     "keyboard": [
         [{"text": "/search что такое Spotify"}],
         [{"text": "/weather Астана"}, {"text": "/weather Алматы"}],
         [{"text": "/model"}, {"text": "/reset"}],
-        [{"text": "/help"}, {"text": "/menu"}],
+        [{"text": "/help"}, {"text": "/start"}],
     ],
     "resize_keyboard": True,
     "is_persistent": True,
@@ -388,9 +381,6 @@ class TelegramBot:
                 payload["reply_markup"] = reply_markup
             self.call("sendMessage", payload)
 
-    def send_menu(self, chat_id: int) -> None:
-        self.send_message(chat_id, MENU_TEXT, reply_markup=MENU_KEYBOARD)
-
     def configure_bot_menu(self) -> None:
         try:
             self.call("setMyCommands", {"commands": BOT_COMMANDS}, timeout=20)
@@ -448,7 +438,6 @@ class TelegramBot:
                 "Привет! Я AI-бот на Gemini.\n\n"
                 "Напиши вопрос обычным сообщением или выбери команду в меню.\n\n"
                 "Команды:\n"
-                "/menu - открыть удобное меню\n"
                 "/reset - очистить контекст диалога\n"
                 "/search запрос - поиск через Tavily\n"
                 "/weather город - погода через OpenWeather\n"
@@ -458,15 +447,11 @@ class TelegramBot:
             )
             return
 
-        if text.startswith("/menu"):
-            self.send_menu(chat_id)
-            return
-
         if text.startswith("/help"):
             self.send_message(
                 chat_id,
                 "Просто отправь текст, и я отвечу через AI.\n"
-                "Открыть кнопки: /menu\n"
+                "Открыть кнопки: /start\n"
                 "Для свежей информации используй /search, например:\n"
                 "/search последние новости AI\n"
                 "Для погоды используй /weather, например:\n"

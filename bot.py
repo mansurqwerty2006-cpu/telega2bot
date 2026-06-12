@@ -36,7 +36,7 @@ BOT_COMMANDS = [
 
 MENU_KEYBOARD = {
     "keyboard": [
-        [{"text": "/search что такое Spotify"}],
+        [{"text": "/search Spotify"}],
         [{"text": "/weather Астана"}, {"text": "/weather Алматы"}],
         [{"text": "/model"}, {"text": "/reset"}],
         [{"text": "/help"}, {"text": "/start"}],

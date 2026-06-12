@@ -26,12 +26,12 @@ DEFAULT_SYSTEM_INSTRUCTION = (
 )
 
 BOT_COMMANDS = [
-    {"command": "start", "description": "Запустить бота"},
-    {"command": "search", "description": "Найти информацию в интернете"},
-    {"command": "weather", "description": "Узнать текущую погоду"},
-    {"command": "model", "description": "Показать активную AI-модель"},
-    {"command": "reset", "description": "Очистить контекст диалога"},
-    {"command": "help", "description": "Помощь по командам"},
+    {"command": "start", "description": "Запустить бота ✨"},
+    {"command": "search", "description": "Найти информацию в интернете 🔎"},
+    {"command": "weather", "description": "Узнать текущую погоду ☀️"},
+    {"command": "model", "description": "Показать активную AI-модель 🤖"},
+    {"command": "reset", "description": "Очистить контекст диалога 🧹"},
+    {"command": "help", "description": "Помощь по командам 💬"},
 ]
 
 MENU_KEYBOARD = {
@@ -296,14 +296,14 @@ class BotState:
 
     def web_search(self, query: str) -> str:
         if not self.tavily:
-            return "Tavily не настроен. Добавь TAVILY_API_KEY в .env."
+            return "Tavily не настроен. Добавь TAVILY_API_KEY в .env 🙂"
 
         search_data = self.tavily.search(query)
         results = search_data.get("results", [])
         if not results and search_data.get("answer"):
             return str(search_data["answer"])
         if not results:
-            return "Ничего не нашел по этому запросу."
+            return "Ничего не нашел по этому запросу. Попробуй чуть иначе 🔎"
 
         source_lines: list[str] = []
         for index, result in enumerate(results[:5], start=1):
@@ -324,7 +324,7 @@ class BotState:
 
     def current_weather(self, location: str) -> str:
         if not self.weather:
-            return "OpenWeather не настроен. Добавь OPENWEATHER_API_KEY в .env или Render."
+            return "OpenWeather не настроен. Добавь OPENWEATHER_API_KEY в .env или Render 🙂"
 
         location = normalize_weather_location(location)
         data = self.weather.current_weather(location)
@@ -343,7 +343,7 @@ class BotState:
 
         place = f"{city}, {country}" if country else city
         lines = [
-            f"Погода: {place}",
+            f"Погода: {place} ☀️",
             f"Сейчас: {description}",
         ]
         if temp is not None:
@@ -374,7 +374,7 @@ class TelegramBot:
         return data
 
     def send_message(self, chat_id: int, text: str, reply_markup: dict[str, Any] | None = None) -> None:
-        chunks = split_for_telegram(text) or ["Пустой ответ."]
+        chunks = split_for_telegram(text) or ["Пустой ответ 🙂"]
         for index, chunk in enumerate(chunks):
             payload: dict[str, Any] = {"chat_id": chat_id, "text": chunk[:TELEGRAM_LIMIT]}
             if index == len(chunks) - 1 and reply_markup:
@@ -435,8 +435,8 @@ class TelegramBot:
         if text.startswith("/start"):
             self.send_message(
                 chat_id,
-                "Привет! Я AI-бот на Gemini.\n\n"
-                "Напиши вопрос обычным сообщением или выбери команду в меню.\n\n"
+                "Привет! Я AI-бот на Gemini ✨\n\n"
+                "Напиши вопрос обычным сообщением или выбери команду в меню 🙂\n\n"
                 "Команды:\n"
                 "/reset - очистить контекст диалога\n"
                 "/search запрос - поиск через Tavily\n"
@@ -450,20 +450,20 @@ class TelegramBot:
         if text.startswith("/help"):
             self.send_message(
                 chat_id,
-                "Просто отправь текст, и я отвечу через AI.\n"
+                "Просто отправь текст, и я отвечу через AI 🙂\n"
                 "Открыть кнопки: /start\n"
                 "Для свежей информации используй /search, например:\n"
                 "/search последние новости AI\n"
                 "Для погоды используй /weather, например:\n"
                 "/weather Алматы\n"
-                "Если разговор пошел не туда, используй /reset.",
+                "Если разговор пошел не туда, используй /reset. Все поправим ✨",
                 reply_markup=MENU_KEYBOARD,
             )
             return
 
         if text.startswith("/reset"):
             self.state.reset(chat_id)
-            self.send_message(chat_id, "Контекст очищен. Начинаем с чистого листа.")
+            self.send_message(chat_id, "Контекст очищен. Начинаем с чистого листа ✨")
             return
 
         if text.startswith("/model"):
@@ -473,7 +473,7 @@ class TelegramBot:
         if text.startswith("/search"):
             query = text.removeprefix("/search").strip()
             if not query:
-                self.send_message(chat_id, "Напиши запрос после команды, например: /search курс доллара сегодня")
+                self.send_message(chat_id, "Напиши запрос после команды, например: /search курс доллара сегодня 🔎")
                 return
 
             self.send_typing(chat_id)
@@ -481,13 +481,13 @@ class TelegramBot:
                 self.send_message(chat_id, self.state.web_search(query))
             except Exception:
                 logger.exception("Search request failed")
-                self.send_message(chat_id, "Не получилось выполнить поиск. Проверь TAVILY_API_KEY и попробуй позже.")
+                self.send_message(chat_id, "Не получилось выполнить поиск. Проверь TAVILY_API_KEY и попробуй позже 🙂")
             return
 
         if text.startswith("/weather"):
             location = text.removeprefix("/weather").strip()
             if not location:
-                self.send_message(chat_id, "Напиши город после команды, например: /weather Алматы")
+                self.send_message(chat_id, "Напиши город после команды, например: /weather Алматы ☀️")
                 return
 
             self.send_typing(chat_id)
@@ -497,7 +497,7 @@ class TelegramBot:
                 logger.exception("Weather request failed")
                 self.send_message(
                     chat_id,
-                    "Не получилось получить погоду. Проверь OPENWEATHER_API_KEY и название города.",
+                    "Не получилось получить погоду. Проверь OPENWEATHER_API_KEY и название города 🙂",
                 )
             return
 
@@ -506,7 +506,7 @@ class TelegramBot:
             self.send_message(chat_id, self.state.ask(chat_id, text))
         except Exception:
             logger.exception("Gemini request failed")
-            self.send_message(chat_id, "Не получилось получить ответ от AI. Проверь GEMINI_API_KEY и доступ к модели.")
+            self.send_message(chat_id, "Не получилось получить ответ от AI. Проверь GEMINI_API_KEY и доступ к модели 🙂")
 
 
 def build_state() -> BotState:

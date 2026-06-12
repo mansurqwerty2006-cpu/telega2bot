@@ -18,6 +18,7 @@ SAFE_MESSAGE_LIMIT = 3900
 GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta"
 TAVILY_SEARCH_URL = "https://api.tavily.com/search"
 OPENWEATHER_URL = "https://api.openweathermap.org/data/2.5/weather"
+OPENWEATHER_GEO_URL = "https://api.openweathermap.org/geo/1.0/direct"
 
 DEFAULT_SYSTEM_INSTRUCTION = (
     "Ты дружелюбный AI-помощник в Telegram. Отвечай на языке пользователя, "
@@ -193,11 +194,40 @@ def normalize_weather_location(text: str) -> str:
         "алматы": "Алматы",
         "москве": "Москва",
         "москва": "Москва",
+        "нью йорк": "Нью-Йорк",
+        "нью-йорк": "Нью-Йорк",
+        "ню йорк": "Нью-Йорк",
+        "ню-йорк": "Нью-Йорк",
+        "new york": "New York",
         "питере": "Санкт-Петербург",
         "санкт петербурге": "Санкт-Петербург",
         "санкт-петербурге": "Санкт-Петербург",
     }
     return aliases.get(location_lower, location)
+
+
+def unique_items(items: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for item in items:
+        value = " ".join(item.strip().split())
+        key = value.lower()
+        if value and key not in seen:
+            seen.add(key)
+            result.append(value)
+    return result
+
+
+def weather_location_candidates(text: str) -> list[str]:
+    normalized = normalize_weather_location(text)
+    variants = [normalized, text.strip()]
+
+    if " " in normalized:
+        variants.append(normalized.replace(" ", "-"))
+    if "-" in normalized:
+        variants.append(normalized.replace("-", " "))
+
+    return unique_items(variants)
 
 
 @dataclass
@@ -261,10 +291,24 @@ class TavilyClient:
 class OpenWeatherClient:
     api_key: str
 
-    def current_weather(self, location: str) -> dict[str, Any]:
+    def geocode(self, location: str, limit: int = 5) -> list[dict[str, Any]]:
         query = urllib.parse.urlencode(
             {
                 "q": location,
+                "appid": self.api_key,
+                "limit": limit,
+            }
+        )
+        data = http_json(f"{OPENWEATHER_GEO_URL}?{query}", timeout=30)
+        if not isinstance(data, list):
+            raise ApiError(f"Unexpected OpenWeather geocoding response: {data}")
+        return data
+
+    def current_weather_by_coords(self, lat: float, lon: float) -> dict[str, Any]:
+        query = urllib.parse.urlencode(
+            {
+                "lat": lat,
+                "lon": lon,
                 "appid": self.api_key,
                 "units": "metric",
                 "lang": "ru",
@@ -345,10 +389,81 @@ class BotState:
         if not self.weather:
             return "OpenWeather не настроен. Добавь OPENWEATHER_API_KEY в .env или Render 🙂"
 
-        location = normalize_weather_location(location)
-        data = self.weather.current_weather(location)
-        city = data.get("name") or location
+        candidates = weather_location_candidates(location)
+        for candidate in candidates:
+            weather_text = self.weather_for_candidate(candidate, location)
+            if weather_text:
+                return weather_text
+
+        ai_candidates = self.suggest_weather_locations(location)
+        for candidate in unique_items(ai_candidates):
+            weather_text = self.weather_for_candidate(candidate, location)
+            if weather_text:
+                return weather_text
+
+        return (
+            "Не нашел такой город даже после исправления названия. "
+            "Попробуй написать город чуть иначе, например: /weather New York 🙂"
+        )
+
+    def weather_for_candidate(self, candidate: str, original_location: str) -> str | None:
+        if not self.weather:
+            return None
+
+        places = self.weather.geocode(candidate)
+        if not places:
+            return None
+
+        place = places[0]
+        lat = place.get("lat")
+        lon = place.get("lon")
+        if lat is None or lon is None:
+            return None
+
+        data = self.weather.current_weather_by_coords(float(lat), float(lon))
+        return self.format_weather(data, place, original_location)
+
+    def suggest_weather_locations(self, location: str) -> list[str]:
+        prompt = (
+            "Исправь название города для поиска погоды. "
+            "Верни только JSON-массив строк, без markdown и пояснений. "
+            "Дай до 5 вариантов: на языке пользователя, официальный вариант и английский вариант. "
+            "Не добавляй страну, если пользователь ее не указал.\n\n"
+            f"Запрос: {location}"
+        )
+        try:
+            answer = self.gemini.generate([{"role": "user", "parts": [{"text": prompt}]}])
+        except Exception:
+            logger.warning("Could not ask Gemini for weather location correction", exc_info=True)
+            return []
+
+        start = answer.find("[")
+        end = answer.rfind("]")
+        if start == -1 or end == -1 or end <= start:
+            return []
+
+        try:
+            parsed = json.loads(answer[start : end + 1])
+        except json.JSONDecodeError:
+            logger.warning("Could not parse Gemini weather location suggestions: %s", answer)
+            return []
+
+        if not isinstance(parsed, list):
+            return []
+        return [str(item) for item in parsed if isinstance(item, str) and item.strip()]
+
+    def format_weather(
+        self,
+        data: dict[str, Any],
+        place: dict[str, Any],
+        original_location: str,
+    ) -> str:
+        city = data.get("name") or original_location
         country = (data.get("sys") or {}).get("country")
+        place_name = place.get("name") or city
+        local_names = place.get("local_names") or {}
+        display_city = local_names.get("ru") or place_name or city
+        display_country = place.get("country") or country
         weather = (data.get("weather") or [{}])[0]
         main = data.get("main") or {}
         wind = data.get("wind") or {}
@@ -360,11 +475,13 @@ class BotState:
         pressure = main.get("pressure")
         wind_speed = wind.get("speed")
 
-        place = f"{city}, {country}" if country else city
+        place_label = f"{display_city}, {display_country}" if display_country else display_city
         lines = [
-            f"Погода: {place} ☀️",
+            f"Погода: {place_label} ☀️",
             f"Сейчас: {description}",
         ]
+        if normalize_weather_location(original_location).lower() != str(display_city).lower():
+            lines.append(f"Нашел как: {place_label} ✨")
         if temp is not None:
             lines.append(f"Температура: {round(float(temp))} °C")
         if feels_like is not None:

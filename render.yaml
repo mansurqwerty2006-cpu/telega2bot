@@ -20,3 +20,7 @@ services:
         value: gemini-3.5-flash
       - key: MAX_OUTPUT_TOKENS
         value: "2048"
+      - key: APP_TIMEZONE
+        value: Asia/Qyzylorda
+      - key: HOLIDAY_COUNTRY_CODE
+        value: KZ

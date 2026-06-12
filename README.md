@@ -25,6 +25,8 @@ TAVILY_API_KEY=...
 OPENWEATHER_API_KEY=...
 GEMINI_MODEL=gemini-3.5-flash
 MAX_OUTPUT_TOKENS=2048
+APP_TIMEZONE=Asia/Qyzylorda
+HOLIDAY_COUNTRY_CODE=KZ
 ```
 
 `.env` добавлен в `.gitignore`, чтобы случайно не опубликовать ключи.
@@ -37,6 +39,14 @@ MAX_OUTPUT_TOKENS=2048
 - `/search запрос` - поиск в интернете через Tavily
 - `/weather город` - текущая погода через OpenWeather
 - `/model` - показать активную модель
+
+Также бот сам отвечает на обычные вопросы про дату и праздники, например:
+
+```text
+какой сегодня день?
+какая сегодня дата?
+какой сегодня праздник?
+```
 
 ## Проверка
 
@@ -56,6 +66,8 @@ python bot.py --check
 - `OPENWEATHER_API_KEY`
 - `GEMINI_MODEL`
 - `MAX_OUTPUT_TOKENS`
+- `APP_TIMEZONE`
+- `HOLIDAY_COUNTRY_CODE`
 
 Бот слушает `PORT` только для Render health check и параллельно запускает Telegram polling.
 Для постоянной работы лучше использовать Render Background Worker, но он может требовать карту.

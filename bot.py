@@ -7,10 +7,12 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
+from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from threading import Thread
 from typing import Any
+from zoneinfo import ZoneInfo
 
 
 TELEGRAM_LIMIT = 4096
@@ -19,6 +21,7 @@ GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta"
 TAVILY_SEARCH_URL = "https://api.tavily.com/search"
 OPENWEATHER_URL = "https://api.openweathermap.org/data/2.5/weather"
 OPENWEATHER_GEO_URL = "https://api.openweathermap.org/geo/1.0/direct"
+HOLIDAY_API_URL = "https://date.nager.at/api/v3/PublicHolidays"
 
 DEFAULT_SYSTEM_INSTRUCTION = (
     "Ты дружелюбный AI-помощник в Telegram. Отвечай на языке пользователя, "
@@ -39,8 +42,9 @@ MENU_KEYBOARD = {
     "keyboard": [
         [{"text": "/search Spotify"}],
         [{"text": "/weather Астана"}, {"text": "/weather Алматы"}],
-        [{"text": "/model"}, {"text": "/reset"}],
-        [{"text": "/help"}, {"text": "/start"}],
+        [{"text": "/model"}],
+        [{"text": "/reset"}, {"text": "/help"}],
+        [{"text": "/start"}],
     ],
     "resize_keyboard": True,
     "is_persistent": True,
@@ -230,6 +234,51 @@ def weather_location_candidates(text: str) -> list[str]:
     return unique_items(variants)
 
 
+WEEKDAYS_RU = [
+    "понедельник",
+    "вторник",
+    "среда",
+    "четверг",
+    "пятница",
+    "суббота",
+    "воскресенье",
+]
+
+MONTHS_RU = [
+    "",
+    "января",
+    "февраля",
+    "марта",
+    "апреля",
+    "мая",
+    "июня",
+    "июля",
+    "августа",
+    "сентября",
+    "октября",
+    "ноября",
+    "декабря",
+]
+
+
+def is_today_info_query(text: str) -> bool:
+    cleaned = text.lower().replace("ё", "е")
+    today_words = ["сегодня", "сегодняшн"]
+    date_words = ["день", "дата", "число", "праздник", "выходной", "какой", "какая"]
+
+    if any(word in cleaned for word in today_words) and any(word in cleaned for word in date_words):
+        return True
+
+    direct_phrases = [
+        "какой день",
+        "какая дата",
+        "какое число",
+        "что за день",
+        "что за праздник",
+    ]
+    return any(phrase in cleaned for phrase in direct_phrases)
+
+
 @dataclass
 class GeminiClient:
     api_key: str
@@ -322,7 +371,10 @@ class BotState:
     gemini: GeminiClient
     tavily: TavilyClient | None = None
     weather: OpenWeatherClient | None = None
+    timezone_name: str = "Asia/Qyzylorda"
+    holiday_country_code: str = "KZ"
     histories: dict[int, list[dict[str, Any]]] = field(default_factory=dict)
+    holidays_cache: dict[tuple[int, str], list[dict[str, Any]]] = field(default_factory=dict)
 
     def reset(self, chat_id: int) -> None:
         self.histories.pop(chat_id, None)
@@ -337,6 +389,54 @@ class BotState:
         if len(history) > 20:
             self.histories[chat_id] = history[-20:]
         return answer
+
+    def today_info(self) -> str:
+        now = datetime.now(ZoneInfo(self.timezone_name))
+        today = now.date()
+        weekday = WEEKDAYS_RU[today.weekday()]
+        date_text = f"{today.day} {MONTHS_RU[today.month]} {today.year} года"
+
+        holidays = self.public_holidays_for_date(today.year, today.isoformat())
+        lines = [
+            f"Сегодня {weekday}, {date_text} 📅",
+            f"Часовой пояс: {self.timezone_name}",
+        ]
+
+        if holidays:
+            lines.append("Праздник сегодня:")
+            for holiday in holidays:
+                local_name = holiday.get("localName") or holiday.get("name") or "Праздник"
+                name = holiday.get("name")
+                if name and name != local_name:
+                    lines.append(f"- {local_name} ({name}) 🎉")
+                else:
+                    lines.append(f"- {local_name} 🎉")
+        else:
+            lines.append(f"Официальных праздников в {self.holiday_country_code} сегодня не нашел 🙂")
+
+        return "\n".join(lines)
+
+    def public_holidays_for_date(self, year: int, date_text: str) -> list[dict[str, Any]]:
+        country_code = self.holiday_country_code.upper()
+        cache_key = (year, country_code)
+
+        if cache_key not in self.holidays_cache:
+            url = f"{HOLIDAY_API_URL}/{year}/{country_code}"
+            try:
+                data = http_json(url, timeout=30)
+            except Exception:
+                logger.warning("Could not fetch public holidays", exc_info=True)
+                data = []
+
+            if not isinstance(data, list):
+                data = []
+            self.holidays_cache[cache_key] = data
+
+        return [
+            holiday
+            for holiday in self.holidays_cache[cache_key]
+            if isinstance(holiday, dict) and holiday.get("date") == date_text
+        ]
 
     def web_search(self, query: str) -> str:
         if not self.tavily:
@@ -578,7 +678,8 @@ class TelegramBot:
                 "/search запрос - поиск через Tavily\n"
                 "/weather город - погода через OpenWeather\n"
                 "/model - показать активную модель\n"
-                "/help - помощь",
+                "/help - помощь\n\n"
+                "Про дату и праздники можно спросить обычным сообщением.",
                 reply_markup=MENU_KEYBOARD,
             )
             return
@@ -592,6 +693,7 @@ class TelegramBot:
                 "/search последние новости AI\n"
                 "Для погоды используй /weather, например:\n"
                 "/weather Алматы\n"
+                "Про дату и праздник спроси обычным текстом: какой сегодня день?\n"
                 "Если разговор пошел не туда, используй /reset. Все поправим ✨",
                 reply_markup=MENU_KEYBOARD,
             )
@@ -606,8 +708,8 @@ class TelegramBot:
             self.send_message(chat_id, f"Активная модель: {self.state.gemini.model}")
             return
 
-        if text.startswith("/search"):
-            query = text.removeprefix("/search").strip()
+        if text.startswith("/search") or text.startswith("/web"):
+            query = text.removeprefix("/search").removeprefix("/web").strip()
             if not query:
                 self.send_message(chat_id, "Напиши запрос после команды, например: /search курс доллара сегодня 🔎")
                 return
@@ -637,6 +739,11 @@ class TelegramBot:
                 )
             return
 
+        if is_today_info_query(text):
+            self.send_typing(chat_id)
+            self.send_message(chat_id, self.state.today_info())
+            return
+
         self.send_typing(chat_id)
         try:
             self.send_message(chat_id, self.state.ask(chat_id, text))
@@ -658,7 +765,13 @@ def build_state() -> BotState:
     tavily = TavilyClient(tavily_key) if tavily_key else None
     openweather_key = os.getenv("OPENWEATHER_API_KEY")
     weather = OpenWeatherClient(openweather_key) if openweather_key else None
-    return BotState(gemini=gemini, tavily=tavily, weather=weather)
+    return BotState(
+        gemini=gemini,
+        tavily=tavily,
+        weather=weather,
+        timezone_name=os.getenv("APP_TIMEZONE", "Asia/Qyzylorda"),
+        holiday_country_code=os.getenv("HOLIDAY_COUNTRY_CODE", "KZ"),
+    )
 
 
 def main() -> None:
@@ -674,6 +787,8 @@ def main() -> None:
         print(f"Gemini model: {state.gemini.model}")
         print(f"Tavily search: {'enabled' if state.tavily else 'disabled'}")
         print(f"OpenWeather: {'enabled' if state.weather else 'disabled'}")
+        print(f"Timezone: {state.timezone_name}")
+        print(f"Holiday country: {state.holiday_country_code}")
         return
 
     start_health_server_from_env()

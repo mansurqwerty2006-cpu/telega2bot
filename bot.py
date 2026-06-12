@@ -300,8 +300,17 @@ class BotState:
 
         search_data = self.tavily.search(query)
         results = search_data.get("results", [])
+        tavily_answer = str(search_data.get("answer") or "").strip()
+
+        source_refs = []
+        for index, result in enumerate(results[:5], start=1):
+            title = result.get("title") or "Без названия"
+            url = result.get("url") or ""
+            if url:
+                source_refs.append(f"[{index}] {title}\n{url}")
+
         if not results and search_data.get("answer"):
-            return str(search_data["answer"])
+            return tavily_answer
         if not results:
             return "Ничего не нашел по этому запросу. Попробуй чуть иначе 🔎"
 
@@ -320,7 +329,17 @@ class BotState:
             "Источники:\n"
             + "\n\n".join(source_lines)
         )
-        return self.gemini.generate([{"role": "user", "parts": [{"text": prompt}]}])
+        try:
+            return self.gemini.generate([{"role": "user", "parts": [{"text": prompt}]}])
+        except Exception:
+            logger.warning("Gemini search summary failed; returning Tavily answer", exc_info=True)
+            if tavily_answer:
+                answer = tavily_answer
+            else:
+                answer = "Я нашел источники, но не смог красиво пересказать их через AI."
+            if source_refs:
+                answer += "\n\nИсточники:\n" + "\n\n".join(source_refs)
+            return answer
 
     def current_weather(self, location: str) -> str:
         if not self.weather:
